@@ -1,0 +1,161 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+write_files:
+  - path: /usr/local/share/dvwa/compose.yaml
+    owner: root:root
+    permissions: "0600"
+    content: |
+      name: dvwa
+
+      services:
+        dvwa:
+          image: "${dvwa_image}"
+          pull_policy: always
+          restart: unless-stopped
+          depends_on:
+            db:
+              condition: service_healthy
+          environment:
+            DB_SERVER: db
+            DB_DATABASE: dvwa
+            DB_USER: dvwa
+            DB_PASSWORD: "$${DVWA_DB_PASSWORD}"
+            DEFAULT_SECURITY_LEVEL: "${dvwa_security_level}"
+          networks:
+            backend:
+              ipv4_address: 172.30.0.10
+          security_opt:
+            - no-new-privileges:true
+          pids_limit: 256
+          mem_limit: 1536m
+          cpus: 1.5
+          logging:
+            driver: syslog
+            options:
+              syslog-address: "unixgram:///dev/log"
+              syslog-facility: "daemon"
+              tag: "dvwa-web"
+
+        db:
+          image: "${mariadb_image}"
+          pull_policy: always
+          restart: unless-stopped
+          environment:
+            MYSQL_ROOT_PASSWORD: "$${MARIADB_ROOT_PASSWORD}"
+            MYSQL_DATABASE: dvwa
+            MYSQL_USER: dvwa
+            MYSQL_PASSWORD: "$${DVWA_DB_PASSWORD}"
+          volumes:
+            - /opt/dvwa/mysql:/var/lib/mysql
+          networks:
+            backend:
+              ipv4_address: 172.30.0.11
+          security_opt:
+            - no-new-privileges:true
+          healthcheck:
+            test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+            interval: 10s
+            timeout: 5s
+            retries: 12
+          logging:
+            driver: syslog
+            options:
+              syslog-address: "unixgram:///dev/log"
+              syslog-facility: "daemon"
+              tag: "dvwa-db"
+
+      networks:
+        backend:
+          internal: ${container_internet_access_enabled ? "false" : "true"}
+          ipam:
+            config:
+              - subnet: 172.30.0.0/24
+
+  - path: /etc/systemd/system/dvwa.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Deliberately Vulnerable Web Application lab
+      Requires=docker.service
+      After=docker.service network-online.target opt-dvwa.mount
+      Wants=network-online.target
+      RequiresMountsFor=/opt/dvwa
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      WorkingDirectory=/usr/local/share/dvwa
+      ExecStartPre=/usr/bin/mountpoint -q /opt/dvwa
+      ExecStart=/usr/bin/docker compose --env-file /opt/dvwa/.env up -d --remove-orphans
+      ExecStop=/usr/bin/docker compose --env-file /opt/dvwa/.env down
+      TimeoutStartSec=0
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/docker.service.d/dvwa-storage.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      RequiresMountsFor=/opt/dvwa
+
+      [Service]
+      ExecStartPre=/usr/bin/mountpoint -q /opt/dvwa
+
+  - path: /usr/local/sbin/dvwa-prepare-storage
+    owner: root:root
+    permissions: "0700"
+    encoding: b64
+    content: ${storage_script_base64}
+
+  - path: /usr/local/sbin/dvwa-bootstrap
+    owner: root:root
+    permissions: "0700"
+    encoding: b64
+    content: ${bootstrap_script_base64}
+
+  - path: /usr/local/sbin/dvwa-verify
+    owner: root:root
+    permissions: "0700"
+    encoding: b64
+    content: ${verify_script_base64}
+
+  - path: /etc/systemd/system/dvwa-proxy.socket
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Private host listener for the DVWA container
+
+      [Socket]
+      ListenStream=0.0.0.0:80
+      NoDelay=true
+
+      [Install]
+      WantedBy=sockets.target
+
+  - path: /etc/systemd/system/dvwa-proxy.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=TCP proxy from the VM private interface to DVWA
+      Requires=dvwa.service
+      After=dvwa.service
+
+      [Service]
+      ExecStart=/usr/lib/systemd/systemd-socket-proxyd 172.30.0.10:80
+      PrivateTmp=true
+      PrivateDevices=true
+      ProtectSystem=strict
+      ProtectHome=true
+      NoNewPrivileges=true
+
+runcmd:
+  - [/usr/local/sbin/dvwa-bootstrap]
+
+final_message: "DVWA private test server bootstrap completed. Review /var/log/cloud-init-output.log and docker compose ps."

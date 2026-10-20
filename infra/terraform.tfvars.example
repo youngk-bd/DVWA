@@ -1,0 +1,35 @@
+# Non-secret example values only. Supply Azure credentials and the SSH public
+# key with environment variables as described in README.md.
+
+location          = "eastus2"
+vm_size           = "Standard_D2s_v7"
+availability_zone = null
+
+# Enable only after the subscription feature is registered and the selected VM
+# SKU reports EncryptionAtHostSupported=True.
+encryption_at_host_enabled = false
+
+# These ranges need a private route into vnet-test-server-dvwa, such as VNet
+# peering, VPN, ExpressRoute, or an approved private gateway.
+application_allowed_source_cidrs = []
+ssh_allowed_source_cidrs         = []
+# application_allowed_source_cidrs = ["10.50.4.0/24"]
+# ssh_allowed_source_cidrs         = ["10.50.8.16/32"]
+
+# Microsoft Entra object IDs, not application/client IDs.
+vm_admin_principal_ids = []
+# vm_admin_principal_ids = ["00000000-0000-0000-0000-000000000000"]
+
+# Link private DNS to routed consumer VNets when needed.
+approved_remote_vnet_ids = {
+  # detector = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-detector/providers/Microsoft.Network/virtualNetworks/vnet-detector"
+}
+
+additional_private_dns_vnet_links = {
+  # detector = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-detector/providers/Microsoft.Network/virtualNetworks/vnet-detector"
+}
+
+tags = {
+  owner       = "security-engineering"
+  cost-center = "security-detection"
+}

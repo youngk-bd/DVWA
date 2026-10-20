@@ -1,0 +1,86 @@
+version: "3"
+
+silent: true
+
+tasks:
+  default:
+    desc: List available DVWA infrastructure tasks
+    cmds:
+      - task --list
+
+  deploy:
+    desc: Human-friendly end-to-end private Azure deployment
+    cmds:
+      - ./infra/deploy.sh
+
+  deploy:yes:
+    desc: Non-interactive deployment using environment inputs and secure defaults
+    cmds:
+      - ./infra/deploy.sh --yes
+
+  configure:
+    desc: Discover Azure inputs and generate infra/terraform.tfvars only
+    cmds:
+      - ./infra/deploy.sh --configure-only --reconfigure
+
+  plan:
+    desc: Configure, validate, test, and create a reviewed Terraform plan
+    cmds:
+      - ./infra/deploy.sh --plan-only
+
+  validate:
+    desc: Run Terraform format, schema validation, and mocked plan tests
+    cmds:
+      - ./infra/tools/tests/deploy-config-test.sh
+      - ./infra/tools/03-validate.sh
+
+  test:scripts:
+    desc: Run offline syntax and deploy configuration-generation tests
+    cmds:
+      - bash -n ./infra/deploy.sh ./infra/tools/lib/common.sh ./infra/tools/*.sh ./infra/tools/tests/*.sh ./infra/guest/*.sh
+      - ./infra/tools/tests/deploy-config-test.sh
+      - bash ./infra/tools/tests/storage-safety-test.sh
+      - bash ./infra/tools/tests/apply-storage-test.sh
+
+  verify:
+    desc: Verify private NIC, VM extensions, cloud-init, and DVWA containers
+    cmds:
+      - ./infra/tools/07-verify.sh
+
+  verify:http:
+    desc: Test private DNS and HTTP from this privately routed machine
+    cmds:
+      - ./infra/tools/07-verify.sh --test-http --skip-run-command
+
+  bastion:tunnel:
+    aliases: ["bastion:open"]
+    desc: Open the localhost DVWA tunnel through the provisioned Azure Bastion host
+    cmds:
+      - ./infra/tools/13-open-bastion-tunnel.sh {{.CLI_ARGS}}
+
+  initialize:
+    desc: Initialize or reset DVWA through Azure Run Command
+    cmds:
+      - ./infra/tools/08-initialize-dvwa.sh --via-run-command
+
+  activate:
+    aliases: [up, start]
+    desc: Start the retained DVWA VM
+    cmds:
+      - ./infra/tools/09-activate-vm.sh
+
+  deactivate:
+    aliases: [down, stop]
+    desc: Deallocate the VM while retaining all resources
+    cmds:
+      - ./infra/tools/10-deactivate-vm.sh
+
+  compute:remove:
+    desc: Remove disposable compute/NAT while retaining data and private foundations
+    cmds:
+      - ./infra/tools/11-remove-compute.sh
+
+  compute:restore:
+    desc: Recreate compute/NAT and reattach the retained data disk
+    cmds:
+      - ./infra/tools/12-restore-compute.sh
